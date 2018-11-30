@@ -1,0 +1,248 @@
+`timescale 1ns / 1ps
+
+//////////////////////////////////////////////////////////////////////////////////
+
+// State machine (goes through each filter)
+//  1.	Freq of sample (clear)
+//  2.	Freq of red
+//  3.	Ratio
+
+
+
+
+// Compare frequency of red/blue/green with clear (different photodiodes)
+// Figure out range
+
+// INPUTS AND OUTPUTS
+
+module state_machine(
+     input clk,
+     input done_freq,
+     input done_calc,
+
+     output reg enable_freq = 0,
+     output reg enable_calc = 0,
+
+     input [19:0] freq,
+     output reg [4:0] color = 4,
+     input [7:0] percent,
+     output reg [1:0] sw = 2'b00,
+
+     output reg [19:0] numerator = 0,
+     output reg [19:0] denominator = 0
+);
+
+
+
+
+
+// defining states as parameters
+parameter  get_clear=0, get_red=1, calc_red=2, get_blue=3, calc_blue=4, get_green=5, calc_green=6, final_flag=7, wait_clear=8, count_flag=9;
+parameter  red_color=0, blue_color=1, green_color=2, yellow_color=3, unknown_color=4;
+
+
+// create a register for the current state
+// reg state_now = 0;
+// create register for the next state
+reg [3:0] state = 0;
+reg [19:0] freq_clear=0;
+reg [19:0] freq_red=0;
+reg [19:0] freq_blue=0;
+reg [19:0] freq_green=0;
+reg [19:0] freq_yellow=0;
+reg done_sequence=0;
+
+reg [6:0] ratio_red=0;
+reg [6:0] ratio_blue=0;
+reg [6:0] ratio_green=0;
+reg [6:0] ratio_yellow=0;
+wire range_red;
+
+reg [1:0] count;
+reg [1:0] count_r;
+reg [1:0] count_g;
+reg [1:0] count_b;
+reg [1:0] count_y;
+// PART 1: determine next state and output
+always @ (posedge clk)
+     // State Machine
+     case(state)
+          get_clear: begin // switches for CLEAR
+               sw <= 2'b10;
+               // enable fr<equency counter
+               enable_freq <= 1;
+               // IF FINISHED COUNTING THE FREQUENCY
+               if (done_freq == 1)
+               begin
+                    // store frequency in reg
+                    freq_clear <= freq;
+                    // enable = 0 ( stops frequency counter)
+                    enable_freq <= 0;
+                    state <= wait_clear;
+                    denominator<=freq;
+               end
+
+               // IF STILL COUNTING THE FREQUENCY
+               else
+               state = get_clear;
+          end
+
+          wait_clear:
+               state<= get_red;
+
+          // FIND FREQUENCY OF RED
+          get_red: begin
+               sw <= 2'b00;
+               enable_freq <= 1;
+
+               if (done_freq == 1)
+               begin
+               freq_red <= freq;
+               //                                       freq <= freq_red;
+               enable_freq <= 0;
+               state <= calc_red;
+               end
+               else
+               state <= get_red;
+          end
+
+          // FIND RATIO OF RED OVER CLEAR
+          calc_red: begin
+               sw <= 2'b00;
+               enable_calc <= 1;
+
+               numerator <= freq_red;
+               denominator <= freq_clear;
+
+               if (done_calc == 1)
+               begin
+               ratio_red <= percent;
+               enable_calc <= 0;
+               state <= get_blue;
+               end
+               else
+               state <= calc_red;
+          end
+
+          // FIND FREQUENCY OF BLUE
+          get_blue: begin
+               sw <= 2'b01;
+               enable_freq <= 1;
+
+               if (done_freq == 1)
+               begin
+                    freq_blue <= freq;
+                    //                                                                freq<=freq_blue;
+                    enable_freq <= 0;
+                    state <= calc_blue;
+               end
+               else
+               state <= get_blue;
+          end
+
+          // FIND RATIO OF BLUE OVER CLEAR
+          calc_blue: begin
+               sw <= 2'b01;
+               enable_calc <= 1;
+
+               numerator <= freq_blue;
+               denominator <= freq_clear;
+
+               if (done_calc == 1)
+               begin
+                    ratio_blue <= percent;
+                    enable_calc <= 0;
+                    state <= get_green;
+               end
+               else
+               state <= calc_blue;
+          end
+
+
+
+
+
+          // FIND FREQUENCY OF GREEN
+          get_green: begin
+               sw <= 2'b11;
+               enable_freq <= 1;
+
+               if (done_freq == 1)
+               begin
+                    freq_green <= freq;
+                    //                             freq<=freq_green;
+                    enable_freq <= 0;
+                    state <= calc_green;
+               end
+               else
+               state <= get_green;
+          end
+
+
+          // FIND RATIO OF GREEN OVER CLEAR
+          calc_green: begin
+               sw <= 2'b11;
+               enable_calc <= 1;
+
+               numerator <= freq_green;
+               denominator <= freq_clear;
+
+               if (done_calc == 1)
+               begin
+               ratio_green <= percent;
+               enable_calc <= 0;
+               done_sequence <= 1;
+               state <= final_flag;
+               end
+
+               else
+               state <= calc_green;
+
+          end
+
+          // PART 3: Output according to current state and input
+          final_flag:
+          begin
+               count = count + 1;
+               // RED
+               if ((ratio_red < 60 && ratio_red > 25) && (ratio_green < 25 && ratio_green > 10) && (ratio_blue < 40 && ratio_blue > 10))
+               // color <= red_color;
+               count_r = count_r + 1;
+               // GREEN
+               else if ((ratio_red < 340 && ratio_red > 30) && (ratio_green < 30 && ratio_green > 20) && (ratio_blue < 40 && ratio_blue > 30))
+               // color <= green_color;
+               count_g = count_g + 1;
+               // BLUE
+               else if ((ratio_red < 30 && ratio_red > 10) && (ratio_green < 30 && ratio_green > 10) && (ratio_blue < 40 && ratio_blue > 30))
+               // color <= blue_color;
+               count_b = count_b + 1;
+               // YELLOW
+               else if ((ratio_red < 80 && ratio_red > 20) && (ratio_green < 60 && ratio_green > 10) && (ratio_blue < 60 && ratio_blue > 10))
+               // color <= yellow_color;
+               count_y = count_y + 1;
+               else
+               color <= unknown_color;
+               state <= count_flag;
+          end
+
+          count_flag:
+          begin
+               if (count == 3)
+               begin
+                    if (count_r == 3)
+                         color = red_color;
+                    else if (count_g == 3)
+                         color = green_color;
+                    else if (count_b == 3)
+                         color = blue_color;
+                    else if (count_y == 3)
+                         color = yellow_color;
+                    else
+                         color = unknown_color;
+               end
+          state = get_clear;
+          end
+     endcase
+
+endmodule
+
