@@ -1,0 +1,55 @@
+`timescale 1ns / 1ps
+
+
+// Frequency Counter
+
+module freq_counter(
+	input clk,
+    input enable,
+	input in,
+	output reg [19:0] freq = 20'b0,
+    output reg done = 0);
+
+	reg [31:0] count = 32'b0;
+	reg [19:0] edge_count = 20'b0;
+	reg last = 0;
+
+	localparam maximum = 'd6250000;
+
+
+	always @(posedge clk)
+		last <= in;
+
+     always @ (posedge clk)
+
+            if (enable == 1)
+            begin
+               if (count < maximum)
+                   begin
+                    count <= count + 1; // for clock
+                    
+                    if(~last & in)
+                        edge_count <= edge_count + 1;   // for signal
+                      
+                   end
+                   
+               else begin
+                    freq <= edge_count;//*16;
+                    edge_count <= 0;
+                    count <= 0;
+                    done = 1;
+               end   
+             end
+             
+             
+             
+             
+             else 
+                begin
+                edge_count <=0;
+                count <=0;
+                done <= 0;
+                freq <=0;
+                end
+              
+endmodule
